@@ -12,15 +12,21 @@
   },
   "dependencies": {
     "fastmcp": "^3.17.0",
+    "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
-    "fs-extra": "^11.2.0"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   },
-  "keywords": ["mcp", "developer-web", "circle", "project-management"],
+  "keywords": [
+    "mcp",
+    "developer-web",
+    "circle",
+    "project-management"
+  ],
   "author": "Circle Developer Team",
   "license": "MIT"
 }

@@ -1,7 +1,12 @@
 import { FastMCP } from "fastmcp";
 import { glob } from "glob";
 import { readFile, readdir, stat } from "fs/promises";
-import { join, relative } from "path";
+import { join } from "path";
+import { z } from "zod";
+import { chdir } from "process";
+
+// Change to the developer-web project directory
+chdir("/Users/phong.lam/Documents/projects/developer-web");
 
 const server = new FastMCP({
   name: "developer-web-mcp",
@@ -27,25 +32,14 @@ The project structure includes:
 });
 
 // Tool: Search for files by pattern
-server.tool({
+server.addTool({
   name: "search_files",
   description: "Search for files matching a pattern in the developer-web project",
-  parameters: {
-    type: "object",
-    properties: {
-      pattern: {
-        type: "string",
-        description: "Glob pattern to search for files (e.g., '*.tsx', '**/components/**')",
-      },
-      directory: {
-        type: "string",
-        description: "Directory to search in (default: project root)",
-        default: ".",
-      },
-    },
-    required: ["pattern"],
-  },
-  handler: async ({ pattern, directory = "." }) => {
+  parameters: z.object({
+    pattern: z.string().describe("Glob pattern to search for files (e.g., '*.tsx', '**/components/**')"),
+    directory: z.string().optional().default(".").describe("Directory to search in (default: project root)"),
+  }),
+  execute: async ({ pattern, directory = "." }) => {
     try {
       const projectRoot = process.cwd();
       const searchPath = join(projectRoot, directory);
@@ -75,24 +69,14 @@ server.tool({
 });
 
 // Tool: Find React components
-server.tool({
+server.addTool({
   name: "find_components",
   description: "Find React components in the project",
-  parameters: {
-    type: "object",
-    properties: {
-      name: {
-        type: "string",
-        description: "Component name to search for (optional)",
-      },
-      directory: {
-        type: "string",
-        description: "Directory to search in (default: 'apps' and 'packages')",
-        default: "apps,packages",
-      },
-    },
-  },
-  handler: async ({ name, directory = "apps,packages" }) => {
+  parameters: z.object({
+    name: z.string().optional().describe("Component name to search for (optional)"),
+    directory: z.string().optional().default("apps,packages").describe("Directory to search in (default: 'apps' and 'packages')"),
+  }),
+  execute: async ({ name, directory = "apps,packages" }) => {
     try {
       const projectRoot = process.cwd();
       const dirs = directory.split(",");
@@ -132,19 +116,13 @@ server.tool({
 });
 
 // Tool: Get GraphQL schemas
-server.tool({
+server.addTool({
   name: "get_graphql_schemas",
   description: "Get all GraphQL schema files in the project",
-  parameters: {
-    type: "object",
-    properties: {
-      feature: {
-        type: "string",
-        description: "Specific feature to get schemas for (optional)",
-      },
-    },
-  },
-  handler: async ({ feature }) => {
+  parameters: z.object({
+    feature: z.string().optional().describe("Specific feature to get schemas for (optional)"),
+  }),
+  execute: async ({ feature }) => {
     try {
       const projectRoot = process.cwd();
       const pattern = feature 
@@ -183,25 +161,14 @@ server.tool({
 });
 
 // Tool: Get project structure
-server.tool({
+server.addTool({
   name: "get_project_structure",
   description: "Get the project structure and file counts",
-  parameters: {
-    type: "object",
-    properties: {
-      directory: {
-        type: "string",
-        description: "Directory to analyze (default: project root)",
-        default: ".",
-      },
-      maxDepth: {
-        type: "number",
-        description: "Maximum depth to traverse (default: 3)",
-        default: 3,
-      },
-    },
-  },
-  handler: async ({ directory = ".", maxDepth = 3 }) => {
+  parameters: z.object({
+    directory: z.string().optional().default(".").describe("Directory to analyze (default: project root)"),
+    maxDepth: z.number().optional().default(3).describe("Maximum depth to traverse (default: 3)"),
+  }),
+  execute: async ({ directory = ".", maxDepth = 3 }) => {
     try {
       const projectRoot = process.cwd();
       const analyzeDir = async (dir: string, currentDepth = 0): Promise<string> => {
@@ -251,21 +218,13 @@ server.tool({
 });
 
 // Tool: Find test files
-server.tool({
+server.addTool({
   name: "find_test_files",
   description: "Find test files in the project",
-  parameters: {
-    type: "object",
-    properties: {
-      type: {
-        type: "string",
-        description: "Type of test files to find (unit, integration, e2e, all)",
-        enum: ["unit", "integration", "e2e", "all"],
-        default: "all",
-      },
-    },
-  },
-  handler: async ({ type = "all" }) => {
+  parameters: z.object({
+    type: z.enum(["unit", "integration", "e2e", "all"]).optional().default("all").describe("Type of test files to find (unit, integration, e2e, all)"),
+  }),
+  execute: async ({ type = "all" }) => {
     try {
       const projectRoot = process.cwd();
       let patterns: string[] = [];
@@ -318,19 +277,13 @@ server.tool({
 });
 
 // Tool: Get package information
-server.tool({
+server.addTool({
   name: "get_package_info",
   description: "Get information about packages in the project",
-  parameters: {
-    type: "object",
-    properties: {
-      package: {
-        type: "string",
-        description: "Specific package name to get info for (optional)",
-      },
-    },
-  },
-  handler: async ({ package: packageName }) => {
+  parameters: z.object({
+    package: z.string().optional().describe("Specific package name to get info for (optional)"),
+  }),
+  execute: async ({ package: packageName }) => {
     try {
       const projectRoot = process.cwd();
       const packageFiles = await glob("**/package.json", { cwd: projectRoot });
