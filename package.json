@@ -1,0 +1,26 @@
+{
+  "name": "developer-web-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Circle's developer-web project management and code analysis",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "fastmcp dev src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "inspect": "fastmcp inspect src/index.ts"
+  },
+  "dependencies": {
+    "fastmcp": "^3.17.0",
+    "glob": "^10.3.10",
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": ["mcp", "developer-web", "circle", "project-management"],
+  "author": "Circle Developer Team",
+  "license": "MIT"
+}
