@@ -5,12 +5,17 @@ import { readFile, readdir, stat } from "fs/promises";
 import { join } from "path";
 import { z } from "zod";
 import { chdir } from "process";
+import { exec } from "child_process";
+import { promisify } from "util";
 
 // Load environment variables from .env file
 config();
 
+// Promisify exec for async command execution
+const execAsync = promisify(exec);
+
 // Change to the developer-web project directory
-const projectPath = process.env.PROJECT_ROOT;
+const projectPath = process.env.PROJECT_ROOT || "/Users/phong.lam/Documents/projects/developer-web";
 if (!projectPath) {
   console.error('PROJECT_ROOT environment variable is not set');
   process.exit(1);
@@ -18,7 +23,7 @@ if (!projectPath) {
 chdir(projectPath);
 
 const server = new FastMCP({
-  name: "developer-web-mcp",
+  name: "developer-web-mcp-server",
   version: "1.0.0",
   instructions: `
 This MCP server provides tools for managing the developer-web project, a Circle Web3 developer platform.
@@ -30,6 +35,7 @@ Available capabilities:
 - Analyze dependencies and package relationships
 - Find test files and coverage information
 - Get deployment and infrastructure information
+- Generate pull request descriptions from templates and git diffs
 
 The project structure includes:
 - apps/ - Next.js applications
@@ -37,6 +43,7 @@ The project structure includes:
 - features/ - Feature-specific code and GraphQL schemas
 - deploy/ - Terraform infrastructure configurations
 - docs/ - Documentation
+- .github/ - GitHub templates and workflows
 `,
 });
 
@@ -260,7 +267,7 @@ server.addTool({
       }
       
       // Remove duplicates
-      const uniqueFiles = [...new Set(allFiles)];
+      const uniqueFiles = Array.from(new Set(allFiles));
       
       return {
         content: [
@@ -335,6 +342,381 @@ server.addTool({
     }
   },
 });
+
+// Tool: Get git diff between current branch and master
+server.addTool({
+  name: "get_git_diff",
+  description: "Get the git diff between current HEAD and master branch, including changed files and commit messages",
+  parameters: z.object({
+    branch: z.string().optional().describe("Branch to compare against (default: master)"),
+    includeDiff: z.boolean().optional().default(true).describe("Whether to include the actual diff content (default: true)"),
+    includeCommits: z.boolean().optional().default(true).describe("Whether to include commit messages (default: true)"),
+  }),
+  execute: async ({ branch = "master", includeDiff = true, includeCommits = true }) => {
+    console.log(`get_git_diff called with branch=${branch}, includeDiff=${includeDiff}, includeCommits=${includeCommits}`);
+    try {
+      const projectRoot = process.cwd();
+      
+      // Get current branch name
+      const { stdout: currentBranch } = await execAsync("git branch --show-current");
+      const currentBranchName = currentBranch.trim();
+
+      // Get list of changed files
+      const { stdout: filesOutput } = await execAsync(`git diff --name-only ${branch}...HEAD`);
+      const changedFiles = filesOutput.trim().split('\n').filter((file: string) => file.length > 0);
+
+      let output = `# Git Diff: ${currentBranchName} → ${branch}\n\n`;
+      output += `**Files Changed:** ${changedFiles.length}\n\n`;
+
+      // Add changed files list
+      if (changedFiles.length > 0) {
+        output += `## Changed Files\n\n`;
+        changedFiles.forEach((file: string) => {
+          output += `- \`${file}\`\n`;
+        });
+        output += `\n`;
+      }
+
+      // Add commit messages if requested
+      if (includeCommits) {
+        try {
+          const { stdout: commits } = await execAsync(`git log --oneline ${branch}..HEAD`);
+          const commitMessages = commits.trim().split('\n').filter((commit: string) => commit.length > 0);
+          
+          if (commitMessages.length > 0) {
+            output += `## Commits\n\n`;
+            commitMessages.forEach((commit: string) => {
+              output += `- ${commit}\n`;
+            });
+            output += `\n`;
+          }
+        } catch (error) {
+          console.warn("Could not get commit messages:", error);
+        }
+      }
+
+      // Add actual diff if requested
+      if (includeDiff) {
+        try {
+          const { stdout: diff } = await execAsync(`git diff ${branch}...HEAD`);
+          if (diff.trim()) {
+            output += `## Diff\n\n`;
+            output += `\`\`\`diff\n${diff}\n\`\`\`\n`;
+          }
+        } catch (error) {
+          output += `\n**Error getting diff:** ${error instanceof Error ? error.message : String(error)}\n`;
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: output,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting git diff: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  },
+});
+
+console.log("get_git_diff tool registered successfully");
+
+// Tool: Generate PR description using AI
+server.addTool({
+  name: "generate_pr_description",
+  description: "Generate a pull request description using AI based on git diff and GitHub PR template",
+  parameters: z.object({
+    branch: z.string().optional().describe("Branch to compare against (default: master)"),
+    includeDiff: z.boolean().optional().default(false).describe("Whether to include the actual diff in the AI generation (default: false)"),
+    template: z.string().optional().describe("Custom template to use instead of .github/pull_request_template.md"),
+  }),
+  execute: async ({ branch = "master", includeDiff = false, template }) => {
+    console.log(`generate_pr_description called with branch=${branch}, includeDiff=${includeDiff}`);
+    try {
+      const projectRoot = process.cwd();
+      
+      // Get current branch name
+      const { stdout: currentBranch } = await execAsync("git branch --show-current");
+      const currentBranchName = currentBranch.trim();
+
+      // Get list of changed files
+      const { stdout: filesOutput } = await execAsync(`git diff --name-only ${branch}...HEAD`);
+      const changedFiles = filesOutput.trim().split('\n').filter((file: string) => file.length > 0);
+
+      // Get commit messages
+      const { stdout: commits } = await execAsync(`git log --oneline ${branch}..HEAD`);
+      const commitMessages = commits.trim().split('\n').filter((commit: string) => commit.length > 0);
+
+      // Read PR template
+      let prTemplate = "";
+      if (template) {
+        prTemplate = template;
+      } else {
+        try {
+          prTemplate = await readFile(join(projectRoot, ".github/pull_request_template.md"), "utf-8");
+        } catch (error) {
+          console.warn("Could not read PR template, using default");
+          prTemplate = `## Problem
+<!-- Describe the problem this PR solves -->
+
+## Solution
+<!-- Describe the solution implemented -->
+
+## Changes
+<!-- List the main changes made -->
+
+## Testing
+<!-- Describe how this was tested -->
+
+## Screenshots (if applicable)
+<!-- Add screenshots if UI changes were made -->`;
+        }
+      }
+
+      // Get diff if requested
+      let diffContent = "";
+      if (includeDiff) {
+        try {
+          const { stdout: diff } = await execAsync(`git diff ${branch}...HEAD`);
+          diffContent = diff;
+        } catch (error) {
+          console.warn("Could not get diff:", error);
+        }
+      }
+
+      // Prepare context for AI
+      const context = {
+        branch: currentBranchName,
+        targetBranch: branch,
+        changedFiles: changedFiles,
+        commitMessages: commitMessages,
+        fileCount: changedFiles.length,
+        diffContent: diffContent,
+        prTemplate: prTemplate
+      };
+
+      // Create AI prompt
+      const aiPrompt = `You are an expert developer helping to generate a pull request description. 
+
+Based on the following information, generate a comprehensive PR description that follows the provided template structure:
+
+**Branch Information:**
+- Current Branch: ${context.branch}
+- Target Branch: ${context.targetBranch}
+- Files Changed: ${context.fileCount}
+
+**Changed Files:**
+${context.changedFiles.map(file => `- ${file}`).join('\n')}
+
+**Commit Messages:**
+${context.commitMessages.map(commit => `- ${commit}`).join('\n')}
+
+${context.diffContent ? `**Diff Content:**
+\`\`\`diff
+${context.diffContent}
+\`\`\`` : ''}
+
+**PR Template to Follow:**
+${context.prTemplate}
+
+Please generate a PR description that:
+1. Follows the template structure exactly
+2. Accurately describes the changes made
+3. Is professional and clear
+4. Includes specific details about what was changed
+5. Mentions any breaking changes if applicable
+6. Suggests testing approaches if relevant
+
+Generate the complete PR description now:`;
+
+      // For now, we'll return the prompt and context since we don't have AI integration
+      // In a real implementation, you would call an AI service here
+      const output = `# AI-Generated PR Description
+
+**Note:** This is a template-based generation. In a real implementation, this would call an AI service.
+
+## Context for AI Generation:
+
+**Branch:** ${context.branch} → ${context.targetBranch}
+**Files Changed:** ${context.fileCount}
+
+**Changed Files:**
+${context.changedFiles.map(file => `- ${file}`).join('\n')}
+
+**Commits:**
+${context.commitMessages.map(commit => `- ${commit}`).join('\n')}
+
+**PR Template:**
+${context.prTemplate}
+
+**AI Prompt:**
+${aiPrompt}
+
+---
+
+**To complete this implementation, you would need to:**
+1. Add an AI service integration (OpenAI, Anthropic, etc.)
+2. Replace this template output with actual AI-generated content
+3. Handle API errors and rate limiting
+4. Add configuration for AI model selection`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: output,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error generating PR description: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  },
+});
+
+console.log("generate_pr_description tool registered successfully");
+
+// Tool: Get AI prompt for PR description
+server.addTool({
+  name: "get_pr_ai_prompt",
+  description: "Get a clean AI prompt for generating PR descriptions that can be copied to Cursor AI",
+  parameters: z.object({
+    branch: z.string().optional().describe("Branch to compare against (default: master)"),
+    includeDiff: z.boolean().optional().default(false).describe("Whether to include the actual diff in the AI generation (default: false)"),
+  }),
+  execute: async ({ branch = "master", includeDiff = false }) => {
+    console.log(`get_pr_ai_prompt called with branch=${branch}, includeDiff=${includeDiff}`);
+    try {
+      const projectRoot = process.cwd();
+      
+      // Get current branch name
+      const { stdout: currentBranch } = await execAsync("git branch --show-current");
+      const currentBranchName = currentBranch.trim();
+
+      // Get list of changed files
+      const { stdout: filesOutput } = await execAsync(`git diff --name-only ${branch}...HEAD`);
+      const changedFiles = filesOutput.trim().split('\n').filter((file: string) => file.length > 0);
+
+      // Get commit messages
+      const { stdout: commits } = await execAsync(`git log --oneline ${branch}..HEAD`);
+      const commitMessages = commits.trim().split('\n').filter((commit: string) => commit.length > 0);
+
+      // Read PR template
+      let prTemplate = "";
+      try {
+        prTemplate = await readFile(join(projectRoot, ".github/pull_request_template.md"), "utf-8");
+      } catch (error) {
+        console.warn("Could not read PR template, using default");
+        prTemplate = `## Problem
+<!-- Describe the problem this PR addresses -->
+
+## Solution
+<!-- Describe the solution implemented -->
+
+## Changes
+<!-- List the main changes made -->
+
+## Testing
+<!-- Describe how this was tested -->`;
+      }
+
+      // Get diff if requested
+      let diffContent = "";
+      if (includeDiff) {
+        try {
+          const { stdout: diff } = await execAsync(`git diff ${branch}...HEAD`);
+          diffContent = diff;
+        } catch (error) {
+          console.warn("Could not get diff:", error);
+        }
+      }
+
+      // Create clean AI prompt
+      const aiPrompt = `You are an expert developer helping to generate a pull request description. 
+
+Based on the following information, generate a comprehensive PR description that follows the provided template structure:
+
+**Branch Information:**
+- Current Branch: ${currentBranchName}
+- Target Branch: ${branch}
+- Files Changed: ${changedFiles.length}
+
+**Changed Files:**
+${changedFiles.map(file => `- ${file}`).join('\n')}
+
+**Commit Messages:**
+${commitMessages.map(commit => `- ${commit}`).join('\n')}
+
+${diffContent ? `**Diff Content:**
+\`\`\`diff
+${diffContent}
+\`\`\`` : ''}
+
+**PR Template to Follow:**
+${prTemplate}
+
+Please generate a PR description that:
+1. Follows the template structure exactly
+2. Accurately describes the changes made
+3. Is professional and clear
+4. Includes specific details about what was changed
+5. Mentions any breaking changes if applicable
+6. Suggests testing approaches if relevant
+
+Generate the complete PR description now:`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# AI Prompt for PR Description Generation
+
+Copy the following prompt and paste it into Cursor's AI chat:
+
+---
+
+${aiPrompt}
+
+---
+
+**Instructions:**
+1. Copy the prompt above
+2. Paste it into Cursor's AI chat
+3. The AI will generate a complete PR description following your template`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting AI prompt: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  },
+});
+
+console.log("get_pr_ai_prompt tool registered successfully");
 
 // Start the server
 server.start().catch(console.error);
