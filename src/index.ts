@@ -598,36 +598,67 @@ ${aiPrompt}
 
 console.log("generate_pr_description tool registered successfully");
 
-// Tool: Get AI prompt for PR description
 server.addTool({
-  name: "get_pr_ai_prompt",
-  description: "Get a clean AI prompt for generating PR descriptions that can be copied to Cursor AI",
+  name: "get_pr_desc_prompt",
+  description:
+    "Get a clean AI prompt for generating PR descriptions that can be copied to Cursor AI",
   parameters: z.object({
-    branch: z.string().optional().describe("Branch to compare against (default: master)"),
-    includeDiff: z.boolean().optional().default(false).describe("Whether to include the actual diff in the AI generation (default: false)"),
-    jiraTicket: z.string().optional().describe("JIRA ticket ID (e.g., 'DEV-5635') to include as a link in the PR description"),
+    branch: z
+      .string()
+      .optional()
+      .describe("Branch to compare against (default: master)"),
+    includeDiff: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Whether to include the actual diff in the AI generation (default: false)"
+      ),
+    jiraTicket: z
+      .string()
+      .optional()
+      .describe(
+        "JIRA ticket ID (e.g., 'DEV-5635') to include as a link in the PR description"
+      ),
   }),
   execute: async ({ branch = "master", includeDiff = false, jiraTicket }) => {
-    console.log(`get_pr_ai_prompt called with branch=${branch}, includeDiff=${includeDiff}, jiraTicket=${jiraTicket}`);
+    console.log(
+      `get_pr_ai_prompt called with branch=${branch}, includeDiff=${includeDiff}, jiraTicket=${jiraTicket}`
+    );
     try {
       const projectRoot = process.cwd();
-      
+
       // Get current branch name
-      const { stdout: currentBranch } = await execAsync("git branch --show-current");
+      const { stdout: currentBranch } = await execAsync(
+        "git branch --show-current"
+      );
       const currentBranchName = currentBranch.trim();
 
       // Get list of changed files
-      const { stdout: filesOutput } = await execAsync(`git diff --name-only ${branch}...HEAD`);
-      const changedFiles = filesOutput.trim().split('\n').filter((file: string) => file.length > 0);
+      const { stdout: filesOutput } = await execAsync(
+        `git diff --name-only ${branch}...HEAD`
+      );
+      const changedFiles = filesOutput
+        .trim()
+        .split("\n")
+        .filter((file: string) => file.length > 0);
 
       // Get commit messages
-      const { stdout: commits } = await execAsync(`git log --oneline ${branch}..HEAD`);
-      const commitMessages = commits.trim().split('\n').filter((commit: string) => commit.length > 0);
+      const { stdout: commits } = await execAsync(
+        `git log --oneline ${branch}..HEAD`
+      );
+      const commitMessages = commits
+        .trim()
+        .split("\n")
+        .filter((commit: string) => commit.length > 0);
 
       // Read PR template
       let prTemplate = "";
       try {
-        prTemplate = await readFile(join(projectRoot, ".github/pull_request_template.md"), "utf-8");
+        prTemplate = await readFile(
+          join(projectRoot, ".github/pull_request_template.md"),
+          "utf-8"
+        );
       } catch (error) {
         console.warn("Could not read PR template, using default");
         prTemplate = `## Problem
@@ -647,7 +678,9 @@ server.addTool({
       let diffContent = "";
       if (includeDiff) {
         try {
-          const { stdout: diff } = await execAsync(`git diff ${branch}...HEAD`);
+          const { stdout: diff } = await execAsync(
+            `git diff ${branch}...HEAD`
+          );
           diffContent = diff;
         } catch (error) {
           console.warn("Could not get diff:", error);
@@ -663,51 +696,49 @@ Based on the following information, generate a comprehensive PR description that
 - Current Branch: ${currentBranchName}
 - Target Branch: ${branch}
 - Files Changed: ${changedFiles.length}
-${jiraTicket ? `- JIRA Ticket: ${jiraTicket}` : ''}
+${jiraTicket ? `- JIRA Ticket: ${jiraTicket}` : ""}
 
 **Changed Files:**
-${changedFiles.map(file => `- ${file}`).join('\n')}
+${changedFiles.map((file) => `- ${file}`).join("\n")}
 
 **Commit Messages:**
-${commitMessages.map(commit => `- ${commit}`).join('\n')}
+${commitMessages.map((commit) => `- ${commit}`).join("\n")}
 
-${diffContent ? `**Diff Content:**
+${
+  diffContent
+    ? `**Diff Content:**
 \`\`\`diff
 ${diffContent}
-\`\`\`` : ''}
+\`\`\``
+    : ""
+}
 
 **PR Template to Follow:**
 ${prTemplate}
 
 Please generate a PR description that:
-1. Follows the template structure exactly
-2. Accurately describes the changes made
-3. Is professional and clear
-4. Includes specific details about what was changed
-5. Mentions any breaking changes if applicable
-6. Suggests testing approaches if relevant
-${jiraTicket ? `7. Includes the JIRA ticket link: <https://circlepay.atlassian.net/browse/${jiraTicket}>` : ''}
+1. Follows the template structure exactly, preserving all markdown headers (##, ###, etc.)
+2. Output inside a fenced code block using \`\`\`markdown so I can copy/paste directly into a \`.md\` file.
+3. Accurately describes the changes made
+4. Is professional and clear
+5. Includes specific details about what was changed
+6. Mentions any breaking changes if applicable
+7. Suggests testing approaches if relevant
+8. Maintains the original markdown formatting from the template, including all ## headers, bullet points, and code blocks
+9. Preserves the exact markdown syntax from the template (## Problem, ## Solution, etc.)
+${
+  jiraTicket
+    ? `10. Includes the JIRA ticket link: <https://circlepay.atlassian.net/browse/${jiraTicket}>`
+    : ""
+}
 
-Generate the complete PR description now:`;
+IMPORTANT: Keep the exact markdown formatting from the template. Do not remove or modify the ## headers, bullet points, or any other markdown syntax. Generate the complete PR description now.`;
 
       return {
         content: [
           {
             type: "text",
-            text: `# AI Prompt for PR Description Generation
-
-Copy the following prompt and paste it into Cursor's AI chat:
-
----
-
-${aiPrompt}
-
----
-
-**Instructions:**
-1. Copy the prompt above
-2. Paste it into Cursor's AI chat
-3. The AI will generate a complete PR description following your template`,
+            text: aiPrompt,
           },
         ],
       };
@@ -716,7 +747,9 @@ ${aiPrompt}
         content: [
           {
             type: "text",
-            text: `Error getting AI prompt: ${error instanceof Error ? error.message : String(error)}`,
+            text: `Error getting AI prompt: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           },
         ],
       };
@@ -724,7 +757,7 @@ ${aiPrompt}
   },
 });
 
-console.log("get_pr_ai_prompt tool registered successfully");
+console.log("get_pr_desc_prompt tool registered successfully");
 
 // Start the server
 server.start().catch(console.error);
