@@ -439,9 +439,10 @@ server.addTool({
     branch: z.string().optional().describe("Branch to compare against (default: master)"),
     includeDiff: z.boolean().optional().default(false).describe("Whether to include the actual diff in the AI generation (default: false)"),
     template: z.string().optional().describe("Custom template to use instead of .github/pull_request_template.md"),
+    jiraTicket: z.string().optional().describe("JIRA ticket ID (e.g., 'DEV-5635') to include as a link in the PR description"),
   }),
-  execute: async ({ branch = "master", includeDiff = false, template }) => {
-    console.log(`generate_pr_description called with branch=${branch}, includeDiff=${includeDiff}`);
+  execute: async ({ branch = "master", includeDiff = false, template, jiraTicket }) => {
+    console.log(`generate_pr_description called with branch=${branch}, includeDiff=${includeDiff}, jiraTicket=${jiraTicket}`);
     try {
       const projectRoot = process.cwd();
       
@@ -502,7 +503,8 @@ server.addTool({
         commitMessages: commitMessages,
         fileCount: changedFiles.length,
         diffContent: diffContent,
-        prTemplate: prTemplate
+        prTemplate: prTemplate,
+        jiraTicket: jiraTicket
       };
 
       // Create AI prompt
@@ -514,6 +516,7 @@ Based on the following information, generate a comprehensive PR description that
 - Current Branch: ${context.branch}
 - Target Branch: ${context.targetBranch}
 - Files Changed: ${context.fileCount}
+${context.jiraTicket ? `- JIRA Ticket: ${context.jiraTicket}` : ''}
 
 **Changed Files:**
 ${context.changedFiles.map(file => `- ${file}`).join('\n')}
@@ -536,6 +539,7 @@ Please generate a PR description that:
 4. Includes specific details about what was changed
 5. Mentions any breaking changes if applicable
 6. Suggests testing approaches if relevant
+${context.jiraTicket ? `7. Includes the JIRA ticket link: <https://circlepay.atlassian.net/browse/${context.jiraTicket}>` : ''}
 
 Generate the complete PR description now:`;
 
@@ -549,6 +553,7 @@ Generate the complete PR description now:`;
 
 **Branch:** ${context.branch} → ${context.targetBranch}
 **Files Changed:** ${context.fileCount}
+${context.jiraTicket ? `**JIRA Ticket:** ${context.jiraTicket}` : ''}
 
 **Changed Files:**
 ${context.changedFiles.map(file => `- ${file}`).join('\n')}
@@ -600,9 +605,10 @@ server.addTool({
   parameters: z.object({
     branch: z.string().optional().describe("Branch to compare against (default: master)"),
     includeDiff: z.boolean().optional().default(false).describe("Whether to include the actual diff in the AI generation (default: false)"),
+    jiraTicket: z.string().optional().describe("JIRA ticket ID (e.g., 'DEV-5635') to include as a link in the PR description"),
   }),
-  execute: async ({ branch = "master", includeDiff = false }) => {
-    console.log(`get_pr_ai_prompt called with branch=${branch}, includeDiff=${includeDiff}`);
+  execute: async ({ branch = "master", includeDiff = false, jiraTicket }) => {
+    console.log(`get_pr_ai_prompt called with branch=${branch}, includeDiff=${includeDiff}, jiraTicket=${jiraTicket}`);
     try {
       const projectRoot = process.cwd();
       
@@ -657,6 +663,7 @@ Based on the following information, generate a comprehensive PR description that
 - Current Branch: ${currentBranchName}
 - Target Branch: ${branch}
 - Files Changed: ${changedFiles.length}
+${jiraTicket ? `- JIRA Ticket: ${jiraTicket}` : ''}
 
 **Changed Files:**
 ${changedFiles.map(file => `- ${file}`).join('\n')}
@@ -679,6 +686,7 @@ Please generate a PR description that:
 4. Includes specific details about what was changed
 5. Mentions any breaking changes if applicable
 6. Suggests testing approaches if relevant
+${jiraTicket ? `7. Includes the JIRA ticket link: <https://circlepay.atlassian.net/browse/${jiraTicket}>` : ''}
 
 Generate the complete PR description now:`;
 
