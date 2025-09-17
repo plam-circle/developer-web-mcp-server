@@ -1,3 +1,4 @@
+import { config } from "dotenv";
 import { FastMCP } from "fastmcp";
 import { glob } from "glob";
 import { readFile, readdir, stat } from "fs/promises";
@@ -5,8 +6,16 @@ import { join } from "path";
 import { z } from "zod";
 import { chdir } from "process";
 
+// Load environment variables from .env file
+config();
+
 // Change to the developer-web project directory
-chdir("/Users/phong.lam/Documents/projects/developer-web");
+const projectPath = process.env.PROJECT_ROOT;
+if (!projectPath) {
+  console.error('PROJECT_ROOT environment variable is not set');
+  process.exit(1);
+}
+chdir(projectPath);
 
 const server = new FastMCP({
   name: "developer-web-mcp",
