@@ -218,7 +218,6 @@ server.addTool({
     includeCommits: z.boolean().optional().default(true).describe("Whether to include commit messages (default: true)"),
   }),
   execute: async ({ branch = "master", includeDiff = true, includeCommits = true }) => {
-    console.log(`get_git_diff called with branch=${branch}, includeDiff=${includeDiff}, includeCommits=${includeCommits}`);
     try {
       const projectRoot = process.cwd();
       
@@ -256,7 +255,7 @@ server.addTool({
             output += `\n`;
           }
         } catch (error) {
-          console.warn("Could not get commit messages:", error);
+          // Silently handle error - commit messages are optional
         }
       }
 
@@ -318,9 +317,6 @@ server.addTool({
       ),
   }),
   execute: async ({ branch = "master", includeDiff = false, jiraTicket }) => {
-    console.log(
-      `get_pr_ai_prompt called with branch=${branch}, includeDiff=${includeDiff}, jiraTicket=${jiraTicket}`
-    );
     try {
       const projectRoot = process.cwd();
 
@@ -356,7 +352,7 @@ server.addTool({
           "utf-8"
         );
       } catch (error) {
-        console.warn("Could not read PR template, using default");
+        // Use default template if file not found
         prTemplate = `## Problem
 <!-- Describe the problem this PR addresses -->
 
@@ -379,7 +375,7 @@ server.addTool({
           );
           diffContent = diff;
         } catch (error) {
-          console.warn("Could not get diff:", error);
+          // Silently handle error - diff is optional
         }
       }
 
@@ -452,8 +448,6 @@ IMPORTANT: Keep the exact markdown formatting from the template. Do not remove o
     }
   },
 });
-
-console.log("get_pr_desc_prompt tool registered successfully");
 
 // Start the server
 server.start().catch(console.error);
